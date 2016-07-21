@@ -1,208 +1,178 @@
-#!/usr/bin/env python
-
-DEBUG = False
-
-import sys
-
-# Usage message.
-USAGE = '''
-Usage: 
-{program} [OPTIONS]
-
-Example: 
-{program} 0426          Pairs for 04/26
-{program} today         Pairs for today
-{program} help          Usage message
-
-Notes:
-- Looks for students.txt in directory where script running from
-- File students.txt must contain student names one per line
-
-'''.format(program=sys.argv[0]).strip()
-
-STUDENTS = [
-  'Dan',
-  'Jayaradha',
-  'Jillian',
-  'Lilly',
-  'Roy',
-  'Shylaja',
-]
-
-STUDENTS_FILE_NAME = 'students.txt'
-
-import os, re,sys
+from random import shuffle
+from collections import Counter
 import datetime as dt
 
-# Reference Monday
-MONDAY1_2016 = dt.datetime(2016,1,4)
+class PairMaker(object):
+    '''
+    creates daily unique pairings of students until all students have paired with all other students
+    '''
+    def __init__(self, 
+                 start_date, 
+                 students = None,
+                 num_students = None
+                 ):
+        '''
+        initialize PairMaker object
+        start_date: string, 'MM/DD/YYYY' formatted date of the first day of class
+        students: string, path of txt file with each students name on a line
+        num_students: int, number of students in the class
+        
+        either students or num_students is required
+        '''
+        err_msg = "either students or num_students must be provided"
+        assert (students is not None) or (num_students is not None), err_msg
+        self._set_start_date(start_date)
+        if num_students:
+            self._setup_from_num(num_students)
+        self.dows = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+        self.counts = Counter()
+        self.all_pairs = None
+        self.out_dict = None
+        if students:
+            self._load_student_file(students)
+        else:
+            self.students = None
 
-def date_to_non_weekend(date):
-    date_weekday = date.weekday()
-    if date_weekday <= 4:
-        return date
-    days_since_friday = date_weekday - 4
-    return date - dt.timedelta(days_since_friday)
 
-def date_to_workday_count(date):
-    'Workdays between date and Mon 2016/1/4'
-    start = MONDAY1_2016
-    date = date_to_non_weekend(date)
-    delta = date - start
-    days = delta.days
-    weeks = days / 7
-    weekends = weeks * 2
-    workday_count = days - weekends
-    return workday_count 
+    def _set_start_date(self, date):
+        date = dt.datetime.strptime(date,'%m/%d/%Y')
+        self.start_date = date
 
-def workday_count_to_shift(workday_count, student_count):
-    cycle_length = student_count - 1
-    return workday_count % cycle_length
+    def _load_student_file(self, path):
+        students = []
+        with open(path, 'r') as f:
+            for line in f:
+                student = line.strip()
+                students.append(student)
+        self._setup_from_num(len(students))
+        if self.odd_num:
+            students.append(' ')
+        shuffle(students)
+        if self.odd_num:
+            self.empty_index = students.index(' ')
+        else:
+            self.empty_index = -1
+        self.students = students
 
-def test_date_to_workday_count():
-    assert 0 == date_to_workday_count(dt.datetime(2016,1,4))
-    assert 1 == date_to_workday_count(dt.datetime(2016,1,5))
-    assert 2 == date_to_workday_count(dt.datetime(2016,1,6))
-    assert 3 == date_to_workday_count(dt.datetime(2016,1,7))
-    assert 4 == date_to_workday_count(dt.datetime(2016,1,8))
-    assert 4 == date_to_workday_count(dt.datetime(2016,1,9))
-    assert 4 == date_to_workday_count(dt.datetime(2016,1,10))
-    assert 5 == date_to_workday_count(dt.datetime(2016,1,11))
-    assert 6 == date_to_workday_count(dt.datetime(2016,1,12))
-    assert 7 == date_to_workday_count(dt.datetime(2016,1,13))
+    def _setup_from_num(self, num):
+        self.odd_num = False
+        if num % 2 == 1:
+            self.odd_num = True
+            num += 1
+        self.cycle_len = num - 1
+        self.indices = range(num)
+        self.row_length = len(self.indices)/2
 
-def right_shift(l,n):
-    n = n % len(l)
-    return l[-n:] + l[:-n]
+    def _make_index_lists(self):
+        all_pairs = []
+        for i in range(self.cycle_len):
+            cur_index = self._create_rotated_index(i)
+            all_pairs.append(self._index_to_index_pairs(cur_index))
+        self.all_pairs = all_pairs
 
-def students_to_even_students(students):
-    # If odd append empty string as student
-    if len(students) % 2 == 1:
-        return students + [""]
-    return students
+    def _create_rotated_index(self, shift):
+        return self.indices[:1] + self._right_shift(self.indices[1:],shift)
 
-def students_to_count(students):
-    return len(students)
+    def _right_shift(self, l, n):
+        n = n % len(l)
+        return l[-n:] + l[:-n]
 
-def count_to_index(count):
-    return range(count)
+    def _index_to_index_pairs(self, index):
+        row1 = index[:self.row_length]
+        row2 = index[:-(self.row_length+1):-1]
+        return zip(row1,row2)
 
-def index_to_rotated_index(index,shift):
-    # First student is fixed point
-    index = index[:1] + right_shift(index[1:],shift)
-    return index
+    def _make_output_dict(self):
+        out_dict = {}
+        if not self.all_pairs:
+            self._make_index_lists()
+        cur_day = self.start_date
+        cur_week = 0
+        cur_dict = {}
+        while len(self.all_pairs) > 0:
+            if cur_day.weekday() > 4:
+                cur_day = cur_day + dt.timedelta(1)
+                continue
+            elif cur_day.weekday() == 0 and cur_day != self.start_date:
+                cur_week += 1
+                out_dict['week {}'.format(cur_week)] = cur_dict
+                cur_dict = {}
+            cur_pair = self.all_pairs.pop()
+            shuffle(cur_pair)
+            cur_dict[cur_day.strftime("%A")] = cur_pair
+            cur_day = cur_day + dt.timedelta(1)
+        out_dict['week {}'.format(cur_week+1)] = cur_dict
+        self.out_dict = out_dict
 
-def index_to_index_pairs(index):
-    row_length = len(index) / 2
-    row1 = index[:row_length]
-    row2 = index[row_length:]
-    row2.reverse()
-    pairs = []
-    for i in xrange(row_length):
-        pair = [row1[i],row2[i]]
-        pairs.append(pair)
-    return pairs
+    def make_md_tables(self, out_path = 'pairs.md'):
+        '''
+        creates a markdown file of the student pairs
+        out_path: string, output path to write markdown tables to
+        '''
+        if not self.out_dict:
+            self._make_output_dict()
+        weeks = sorted(self.out_dict.keys())
+        if self.students:
+            write_students = True
+        else:
+            write_students = False
+        triples = []
+        with open(out_path,'w') as f:
+            for week in weeks:
+                w_str = '{}\n\n|day of week|groups|\n|---|---|\n'.format(week)
+                all_days = self._make_week(self.out_dict[week].keys())
+                solo = None
+                for day in all_days:
+                    ap = self.out_dict[week][day]
+                    shuffle(ap)
+                    pairs = []
+                    for pair in ap:
+                        if self.empty_index in pair:
+                            ind = 1 - pair.index(self.empty_index)
+                            solo = (pair[ind],)
+                        else:
+                            pairs.append(pair)
+                    if solo:
+                        pairs = self._add_single(pairs,solo)
+                    if write_students:
+                        pairs = [tuple(self.students[i] for i in pair) for pair in pairs]
+                    w_str += '|{}|{}|\n'.format(day, ',<br>'.join(str(x) for x in pairs))
+                f.write(w_str)
+            f.write('\n')
 
-def index_pairs_to_student_pairs(index_pairs,students):
-    student_pairs = []
-    for index_pair in index_pairs:
-        index0 = index_pair[0]
-        index1 = index_pair[1]
-        student_pair = [students[index0],students[index1]]
-        student_pairs.append(student_pair)
-    return student_pairs
+    def _add_single(self, pairs, solo):
+        output = set()
+        to_add = True
+        add = False
+        vals = Counter()
+        for pair in pairs:
+            val = self.counts[pair[0]] + self.counts[pair[1]]
+            vals[pair] = val
+            output.add(pair)
+        update = vals.most_common()[-1][0]
+        output.remove(update)
+        self.counts[update[0]] += 1
+        self.counts[update[1]] += 1
+        new_entry = (update[0], update[1], solo[0])
+        output.add(new_entry)
+        return list(output)
 
-def student_pairs_to_output_str(student_pairs):
-    max_width = student_pairs_to_max_width(student_pairs)
-    output_str = ''
-    format_str = '%-{0}s <--> %s\n'.format(max_width)
-    for student_pair in student_pairs:
-        output_str += format_str % tuple(student_pair) 
-    return output_str
+    def _make_week(self,lst):
+        output = []
+        for day in self.dows:
+            if day in lst:
+                output.append(day)
+        return output
 
-def student_pairs_to_max_width(student_pairs):
-    if len(student_pairs) == 0: return 0
-    pair_to_first = lambda pair: pair[0] 
-    str_to_len    = lambda s: len(s)
-    first_students = map(pair_to_first, student_pairs)
-    return max(map(str_to_len, first_students))
+def make_fake_students(num_students = 19):
+    alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    with open('students.txt','w') as file:
+        for i in range(num_students):
+            file.write(alphabet[i] + '\n')
 
-def error_handle():
-    print "Error: " + str(sys.exc_info()[1])
-    if DEBUG:
-        print "Trace: "
-        raise 
-    else:
-        os._exit(1)
-
-def str_to_date(s):
-    error_message = '"%s" must have format MMDD' % s
-    assert re.match(r'^\d{4}$',s), error_message
-    month, day = int(s[:2]),int(s[2:4])
-    year = dt.datetime.now().year
-    date = dt.datetime(year,month,day)
-    return date
-
-def date_to_shift(date,student_count):
-    workday_count = date_to_workday_count(date)
-    shift = workday_count_to_shift(workday_count, student_count)
-    return shift 
-
-def argv_to_date(argv):
-    if arg_is_today(argv[1]):
-        return dt.datetime.now() 
-    date_string = argv[1]
-    date = str_to_date(date_string)
-    return date
-
-def path_to_dir(path):
-    assert 1 == 0
-
-def argv_to_students(argv):
-    script_path = argv[0]
-    script_dir = os.path.dirname(script_path)
-    students_file_path = os.path.join(script_dir,STUDENTS_FILE_NAME)
-    students = []
-    with open(students_file_path,'rb') as file:
-        for line in file.readlines():
-            student = line.strip()
-            students.append(student)
-    return students
-
-def arg_in_list(arg,values):
-    arg = arg.replace('-','').lower()
-    return arg in values
-
-def arg_is_today(arg):
-    return arg_in_list(arg,['today','now'])
-
-def arg_is_help(arg):
-    return arg_in_list(arg,['help','h','?'])
-
-def argv_to_exception(argv):
-    if len(sys.argv) != 2 or arg_is_help(sys.argv[1]):
-        print USAGE
-        os._exit(1)
-
-def main(argv):
-    try:
-        argv_to_exception(argv)
-        date = argv_to_date(argv)
-        students = argv_to_students(argv)
-        students = students_to_even_students(students)
-        student_count = students_to_count(students)
-        shift = date_to_shift(date,student_count)
-        print "Day %d" % (shift + 1)
-        index = count_to_index(student_count)
-        index = index_to_rotated_index(index,shift)
-        index_pairs = index_to_index_pairs(index)
-        student_pairs = index_pairs_to_student_pairs(index_pairs,students)
-        output_str = student_pairs_to_output_str(student_pairs)
-        print output_str,
-
-    except: 
-        error_handle()
 
 if __name__ == '__main__':
-    main(sys.argv)
- 
+    make_fake_students(26)
+    pm = PairMaker(start_date = '08/01/2016',students = 'students.txt')
+    pm.make_md_tables()
+
