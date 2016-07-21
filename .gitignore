@@ -1,3 +1,5 @@
 *.pyc
 tmp-*
 chk*
+*.md
+make_students.py
