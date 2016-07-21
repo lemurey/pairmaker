@@ -2,4 +2,5 @@
 tmp-*
 chk*
 *.md
-make_students.py
+make_*
+*.txt
