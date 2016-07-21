@@ -123,10 +123,8 @@ class PairMaker(object):
                 all_days = self._make_week(self.out_dict[week].keys())
                 solo = None
                 for day in all_days:
-                    ap = self.out_dict[week][day]
-                    shuffle(ap)
                     pairs = []
-                    for pair in ap:
+                    for pair in self.out_dict[week][day]:
                         if self.empty_index in pair:
                             ind = 1 - pair.index(self.empty_index)
                             solo = (pair[ind],)
