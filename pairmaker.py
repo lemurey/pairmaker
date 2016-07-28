@@ -166,7 +166,7 @@ class PairMaker(object):
                 cur_dict = {}
             cur_pair = pulling.pop()
             shuffle(cur_pair)
-            cur_dict[cur_day.strftime("%A")] = cur_pair
+            cur_dict[cur_day.strftime("%A")] = (cur_day, cur_pair)
             cur_day = cur_day + dt.timedelta(1)
         out_dict['week {}'.format(cur_week+1)] = cur_dict
         self.out_dict = out_dict
@@ -184,8 +184,8 @@ class PairMaker(object):
                 w_str = '{}\n\n|day of week|groups|\n|---|---|\n'.format(week)
                 all_days = self._make_week(self.out_dict[week].keys())
                 for day in all_days:
-                    pairs = self.out_dict[week][day]
-                    w_str += '|{}|{}|\n'.format(day, ',<br>'.join(str(x) for x in pairs))
+                    date, pairs = self.out_dict[week][day]
+                    w_str += '|{} - {}|{}|\n'.format(day, date.strftime('%m-%d'), ',<br>'.join(str(x) for x in pairs))
                 f.write(w_str)
             f.write('\n')
 
@@ -221,7 +221,7 @@ def make_fake_students(num_students = 19):
 
 def main(n):
     
-    iters = 5000
+    iters = 500
     counts = []
     make_fake_students(n)
     for _ in range(iters):
